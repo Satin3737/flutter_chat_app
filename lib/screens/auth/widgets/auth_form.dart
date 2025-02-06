@@ -1,5 +1,9 @@
+import 'dart:io';
+
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_chat_app/screens/auth/widgets/user_image_picker.dart';
 
 final _firebaseAuth = FirebaseAuth.instance;
 
@@ -14,9 +18,13 @@ class _AuthFormState extends State<AuthForm> {
   final _formKey = GlobalKey<FormState>();
   String _email = '';
   String _password = '';
+  File? _userImage;
   bool _isLogin = true;
+  bool _isLoading = false;
 
   void _switchAuthMode() => setState(() => _isLogin = !_isLogin);
+
+  void _pickImage(File image) => _userImage = image;
 
   String? _emailValidator(String? value) {
     if (value == null || value.trim().isEmpty) {
@@ -40,7 +48,18 @@ class _AuthFormState extends State<AuthForm> {
 
   void _submitForm() async {
     if (!_formKey.currentState!.validate()) return;
+
+    if (_userImage == null && !_isLogin) {
+      ScaffoldMessenger.of(context).clearSnackBars();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please pick an image.')),
+      );
+      return;
+    }
+
     _formKey.currentState!.save();
+
+    setState(() => _isLoading = true);
 
     try {
       if (_isLogin) {
@@ -53,6 +72,14 @@ class _AuthFormState extends State<AuthForm> {
           email: _email,
           password: _password,
         );
+
+        final storageRef = FirebaseStorage.instance
+            .ref('user_images')
+            .child('${_firebaseAuth.currentUser!.uid}.jpg');
+
+        await storageRef.putFile(_userImage!);
+        final imageUrl = await storageRef.getDownloadURL();
+        print('Image URL: $imageUrl');
       }
     } on FirebaseAuthException catch (error) {
       if (context.mounted) {
@@ -66,6 +93,7 @@ class _AuthFormState extends State<AuthForm> {
         );
       }
     }
+    setState(() => _isLoading = false);
   }
 
   @override
@@ -82,6 +110,7 @@ class _AuthFormState extends State<AuthForm> {
               spacing: 16,
               mainAxisSize: MainAxisSize.min,
               children: [
+                if (!_isLogin) UserImagePicker(onImagePicked: _pickImage),
                 TextFormField(
                   decoration: InputDecoration(
                     labelText: 'Email',
@@ -100,26 +129,34 @@ class _AuthFormState extends State<AuthForm> {
                   validator: _passwordValidator,
                   onSaved: (value) => _password = value!,
                 ),
-                Column(
-                  spacing: 8,
-                  children: [
-                    ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: theme.colorScheme.primaryContainer,
+                if (_isLoading)
+                  Container(
+                    padding: EdgeInsets.all(24),
+                    width: 100,
+                    height: 100,
+                    child: const CircularProgressIndicator(),
+                  ),
+                if (!_isLoading)
+                  Column(
+                    spacing: 4,
+                    children: [
+                      ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: theme.colorScheme.primaryContainer,
+                        ),
+                        onPressed: _submitForm,
+                        child: Text(_isLogin ? 'Login' : 'Signup'),
                       ),
-                      onPressed: _submitForm,
-                      child: Text(_isLogin ? 'Login' : 'Signup'),
-                    ),
-                    TextButton(
-                      onPressed: _switchAuthMode,
-                      child: Text(
-                        _isLogin
-                            ? 'Create new account'
-                            : 'I already have an account',
+                      TextButton(
+                        onPressed: _switchAuthMode,
+                        child: Text(
+                          _isLogin
+                              ? 'Create new account'
+                              : 'I already have an account',
+                        ),
                       ),
-                    ),
-                  ],
-                )
+                    ],
+                  )
               ],
             ),
           ),
