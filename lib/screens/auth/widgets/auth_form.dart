@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
@@ -17,6 +18,7 @@ class AuthForm extends StatefulWidget {
 class _AuthFormState extends State<AuthForm> {
   final _formKey = GlobalKey<FormState>();
   String _email = '';
+  String _name = '';
   String _password = '';
   File? _userImage;
   bool _isLogin = true;
@@ -36,6 +38,13 @@ class _AuthFormState extends State<AuthForm> {
     return null;
   }
 
+  String? _nameValidator(String? value) {
+    if (value == null || value.trim().isEmpty) {
+      return 'Name is required';
+    }
+    return null;
+  }
+
   String? _passwordValidator(String? value) {
     if (value == null || value.trim().isEmpty) {
       return 'Password is required';
@@ -50,10 +59,12 @@ class _AuthFormState extends State<AuthForm> {
     if (!_formKey.currentState!.validate()) return;
 
     if (_userImage == null && !_isLogin) {
-      ScaffoldMessenger.of(context).clearSnackBars();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please pick an image.')),
-      );
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).clearSnackBars();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please pick an image.')),
+        );
+      }
       return;
     }
 
@@ -73,13 +84,20 @@ class _AuthFormState extends State<AuthForm> {
           password: _password,
         );
 
-        final storageRef = FirebaseStorage.instance
-            .ref('user_images')
-            .child('${_firebaseAuth.currentUser!.uid}.jpg');
+        setState(() => _isLoading = false);
 
+        final userId = _firebaseAuth.currentUser!.uid;
+
+        final storageRef =
+            FirebaseStorage.instance.ref('user_images').child('$userId.jpg');
         await storageRef.putFile(_userImage!);
         final imageUrl = await storageRef.getDownloadURL();
-        print('Image URL: $imageUrl');
+
+        FirebaseFirestore.instance.collection('users').doc(userId).set({
+          'name': _name,
+          'email': _firebaseAuth.currentUser!.email,
+          'image_url': imageUrl,
+        });
       }
     } on FirebaseAuthException catch (error) {
       if (context.mounted) {
@@ -93,7 +111,6 @@ class _AuthFormState extends State<AuthForm> {
         );
       }
     }
-    setState(() => _isLoading = false);
   }
 
   @override
@@ -110,7 +127,20 @@ class _AuthFormState extends State<AuthForm> {
               spacing: 16,
               mainAxisSize: MainAxisSize.min,
               children: [
-                if (!_isLogin) UserImagePicker(onImagePicked: _pickImage),
+                if (!_isLogin)
+                  Column(
+                    children: [
+                      UserImagePicker(onImagePicked: _pickImage),
+                      TextFormField(
+                        decoration: InputDecoration(
+                          labelText: 'Name',
+                        ),
+                        enableSuggestions: false,
+                        validator: _nameValidator,
+                        onSaved: (value) => _name = value!,
+                      ),
+                    ],
+                  ),
                 TextFormField(
                   decoration: InputDecoration(
                     labelText: 'Email',
