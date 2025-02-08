@@ -78,6 +78,8 @@ class _AuthFormState extends State<AuthForm> {
           email: _email,
           password: _password,
         );
+
+        setState(() => _isLoading = false);
       } else {
         await _firebaseAuth.createUserWithEmailAndPassword(
           email: _email,
